@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fly Brain Dino 2.1</title>
+<style>
+:root{--bg:#05070f;--panel:#0c1020;--line:#1d2540;--ink:#dfe6ff;--mute:#7e8bb3;--jump:#5dff9a;--duck:#ff8a3d;--da:#ffe14a}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,sans-serif}
+body{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.work{display:grid;grid-template-columns:7fr 3fr;gap:0;height:62vh;min-height:380px}
+.game{background:var(--panel);border-bottom:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;padding:10px;gap:6px}
+canvas#game{width:100%;aspect-ratio:3/1;border:1px solid var(--line);border-radius:6px;background:#0a0e1c}
+.brain{position:relative;border-left:1px solid var(--line);border-bottom:1px solid var(--line);min-height:300px}
+.brain canvas{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+.legend{position:absolute;left:10px;top:8px;display:flex;flex-wrap:wrap;gap:2px 10px;font-size:11px;color:var(--mute);max-width:92%}
+.legend i,.i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.flip{position:absolute;right:8px;top:8px;padding:2px 8px}
+.binfo{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--mute);max-width:95%}
+#tip{position:fixed;pointer-events:none;background:#10152af0;border:1px solid #3b4a86;border-radius:6px;padding:6px 8px;font-size:12px;display:none;z-index:9;white-space:pre}
+.panel{background:var(--panel);padding:8px 12px;display:grid;gap:8px}
+.grp{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}.grp h4{margin:0;font-size:10px;letter-spacing:.1em;color:var(--mute);width:100%}
+button,select,input{background:#151b33;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:inherit}
+button{cursor:pointer}button:hover{border-color:#3b4a86}button.on{background:#25306a;border-color:#7aa2ff}
+input[type=number]{width:78px}label{font-size:12px;color:var(--mute);display:flex;flex-direction:column;gap:2px;position:relative;cursor:help}
+[data-tip]{position:relative}[data-tip]:hover::after,[data-tip]:focus::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:0;width:250px;background:#10152a;border:1px solid #3b4a86;border-radius:6px;padding:6px 8px;color:var(--ink);font-size:12px;z-index:20;white-space:normal;line-height:1.35}
+label[data-tip]>span::after{content:" ⓘ";color:#5a69a8}
+.stats{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}.stats div{background:#10152a;border-radius:6px;padding:4px 8px}
+.stats b{display:block;font-size:16px}.stats span{color:var(--mute);font-size:11px}
+.dabar{height:8px;background:#10152a;border-radius:4px;position:relative;overflow:hidden;min-width:120px;flex:1}
+.dabar i{position:absolute;top:0;bottom:0}.dabar:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#3b4a86}
+canvas#chart{width:100%;height:60px;background:#10152a;border-radius:6px}
+#status{font-weight:600;color:var(--jump)}#msg{color:var(--duck);font-size:12px}
+.note{color:var(--mute);font-size:11.5px}
+@media(max-width:860px){.work{grid-template-columns:1fr;height:auto}.brain{height:60vh;border-left:0}.stats{grid-template-columns:repeat(4,1fr)}}
+</style></head><body>
+<div class="work">
+ <section class="game"><div class="grp"><b>Fly Brain Dino 2.1</b><span id="status">LOADING</span><span id="msg"></span></div>
+  <canvas id="game"></canvas><canvas id="chart"></canvas></section>
+ <section class="brain"><canvas id="brain" aria-label="Real neuPrint neurons"></canvas>
+  <div class="legend"><span><i style="background:#3ff0ff"></i>sensory/projection</span><span><i style="background:#e08cff"></i>Kenyon</span><span><i style="background:#ffd35a"></i>MBON</span><span><i style="background:#ffe14a"></i>DAN (red=dip)</span><span><i style="background:#9fd0ff"></i>central</span><span><i style="background:#5dff9a"></i>descending</span><span><i style="background:#ff8a3d"></i>motor</span></div>
+  <button class="flip" id="bFlip" data-tip="Flip the brain upside-down if it appears inverted. Drag to rotate; the widest axis is auto-placed left-right.">⇅</button><div class="legend" style="top:auto;bottom:34px"><span>dim colours = real neurons shown for anatomy only (not simulated); bright glow = simulated neurons firing</span></div><div class="binfo" id="binfo"></div></section>
+</div>
+<div class="panel">
+ <div class="grp"><h4>RUN</h4>
+  <button id="bTrain" data-tip="Collect Dino experience and update the PPO policy.">Train</button>
+  <button id="bTest" data-tip="Run the current model with no learning and no exploration. Weights, optimizer and exploration stay frozen.">Test</button>
+  <button id="bReset" data-tip="Re-initialise the policy, Adam state, exploration and metrics with random weights. The biological graph is not changed.">Reset</button>
+  <button id="bSave" data-tip="Save a checkpoint (weights, Adam state, PPO state, configuration, graph hash, readout IDs) to the models/ folder.">Save</button>
+  <button id="bLoad" data-tip="Restore the latest checkpoint exactly, including optimizer and exploration. Rejected if it belongs to a different graph.">Load</button>
+  <span class="dabar" data-tip="Dopamine-like prediction error: reward + gamma*V(next) - V(now). Right = better than expected, left (red) = worse. A visualisation only; it never edits weights."><i id="daFill"></i></span></div>
+ <div class="grp"><h4>LEARNING</h4>
+  <label data-tip="Sets learning rate, episodes/update, speed and entropy to defaults. You can still edit them afterwards."><span>Preset</span><select id="pPre"></select></label>
+  <label data-tip="How large each neural-network update is. Higher learns faster but can be unstable; lower is steadier."><span>LR</span><input id="pLr" type="number" step="0.00005"></label>
+  <label data-tip="Dino episodes collected before each PPO update. Larger = steadier updates, but a longer wait between them."><span>Episodes/update</span><input id="pEpu" type="number" step="1" min="1"></label>
+  <label data-tip="Dino environment steps run internally per rendered frame. Higher trains faster but the screen looks quicker."><span>Train speed</span><input id="pSpf" type="number" step="1" min="1"></label>
+  <label data-tip="How much future reward counts now. Higher makes the agent care more about long-term survival."><span>Gamma</span><input id="pGamma" type="number" step="0.01"></label>
+  <label data-tip="Limits how far the new policy may move from the old one in a single update. Smaller = more cautious."><span>PPO clip</span><input id="pClip" type="number" step="0.05"></label>
+  <label data-tip="Bonus for keeping the policy non-deterministic. Higher = more exploration; lower = commits sooner."><span>Entropy</span><input id="pEnt" type="number" step="0.001"></label>
+  <label data-tip="Floor of the exploration schedule (policy temperature). Exploration decays with training episodes, never below this. Test mode uses none."><span>Exploration floor</span><input id="pExp" type="number" step="0.01"></label></div>
+ <div class="grp"><h4>ENVIRONMENT + CONNECTOME</h4>
+  <label data-tip="Balance of rewards: survival per step, clearing an obstacle, and colliding. Saved with the model."><span>Reward</span><select id="pRew"></select></label>
+  <label data-tip="How many real neurons are selected (targets, never padded with fake ones). Changing it needs a cached/rebuilt graph."><span>Connectome</span><select id="pCon"></select></label>
+  <label data-tip="Sparse activity-propagation passes through the biological graph per environment step. More = deeper spread, more compute."><span>Propagation</span><input id="pProp" type="number" min="1" max="6" step="1"></label>
+  <button id="bCtx" style="display:none" data-tip="Download the dense brain outline (a sample of real neuPrint neurons, anatomy only) once. Cached afterwards.">Fetch outline</button> <button id="bBuild" data-tip="Stop, query neuPrint (server-side token), rebuild and cache the selected graph. Existing checkpoints will belong to the old graph.">Rebuild</button>
+  <span class="note" id="cstat"></span></div>
+ <div class="stats"><div><b id="sEp">0</b><span>episode</span></div><div><b id="sScore">0</b><span>score</span></div><div><b id="sBest">0</b><span>best</span></div><div><b id="sRate">0%</b><span>clearance</span></div><div><b id="sDA">0.00</b><span>dopamine</span></div><div><b id="sRew">0.00</b><span>avg reward</span></div><div><b id="sJD">0/0</b><span>jump/duck</span></div><div><b id="sExp">1.00</b><span>exploration</span></div></div>
+ <p class="note" style="margin:0">Janelia neuPrint connectome-based computational model: real neuron identities and connectome-derived connectivity, simplified rate-based activity, trainable PPO policy. Not a full or exact fly-brain simulation. Drag the brain to rotate; hover a neuron for details.</p>
+</div>
+<div id="tip"></div>
+<script>
+const $=id=>document.getElementById(id),clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),DPR=()=>devicePixelRatio||1;
+let CFG,P={},REW,R,GR=null,mode='idle',explore=1,episode=0,ppoUpdates=0,envSteps=0,optStep=0;
+let seed=7;const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
+const gauss=()=>{let u=0;for(let i=0;i<6;i++)u+=rnd();return(u-3)/0.7071};
+const exp_id=Math.random().toString(36).slice(2,10);
+const setStatus=(s,m)=>{$('status').textContent=s;if(m!==undefined)$('msg').textContent=m};
+const api=async(p,o)=>{const r=await fetch(p,o);if(!r.ok)throw new Error((await r.text()).slice(0,240));return r.json()};
+// group order comes from the cache (meta.groups)
+const COL={sensory:'#3ff0ff',kc:'#e08cff',mbon:'#ffd35a',dan:'#ffe14a',central:'#9fd0ff',descending:'#5dff9a',motor:'#ff8a3d'};
+const DIM={sensory:'#1f6f80',kc:'#5d4286',mbon:'#8a7330',dan:'#8a7a20',central:'#3a4b6e',descending:'#2c8a55',motor:'#8a4d22'};
+// ---------- policy / value MLP + Adam (manual backprop)
+const NI=64;let H=32,M,AD;
+function initModel(){H=CFG.rl.hidden;M={W1:new Float32Array(H*NI),b1:new Float32Array(H),Wp:new Float32Array(2*H),bp:new Float32Array(2),Wv:new Float32Array(H),bv:new Float32Array(1)};
+ for(let i=0;i<M.W1.length;i++)M.W1[i]=gauss()*Math.sqrt(2/NI);for(let i=0;i<M.Wp.length;i++)M.Wp[i]=gauss()*0.01;for(let i=0;i<H;i++)M.Wv[i]=gauss()*0.1;
+ AD={t:0,m:{},v:{}};for(const k in M){AD.m[k]=new Float32Array(M[k].length);AD.v[k]=new Float32Array(M[k].length)}}
+const hid=new Float32Array(32);
+function fwd(x){let v=M.bv[0];const z=[M.bp[0],M.bp[1]];for(let j=0;j<H;j++){let s=M.b1[j];for(let i=0;i<NI;i++)s+=M.W1[j*NI+i]*x[i];s=s>0?s:0;hid[j]=s;z[0]+=M.Wp[j]*s;z[1]+=M.Wp[H+j]*s;v+=M.Wv[j]*s}return{z,v}}
+const soft=(z,T)=>{const a=z[0]/T,b=z[1]/T,m=Math.max(a,b),e0=Math.exp(a-m),e1=Math.exp(b-m),s=e0+e1;return[e0/s,e1/s]};
+let buf=[],epsInBuf=0;
+function ppoUpdate(){
+ const B=buf,n=B.length,adv=new Float32Array(n),ret=new Float32Array(n);let g=0;
+ for(let i=n-1;i>=0;i--){const t=B[i],nv=t.done?0:(i+1<n?B[i+1].v:0);if(t.done)g=0;const d=t.r+P.gamma*nv-t.v;g=d+P.gamma*P.lam*g;adv[i]=g;ret[i]=g+t.v}
+ let mu=0,sd=0;for(let i=0;i<n;i++)mu+=adv[i];mu/=n;for(let i=0;i<n;i++)sd+=(adv[i]-mu)**2;sd=Math.sqrt(sd/n)+1e-8;for(let i=0;i<n;i++)adv[i]=(adv[i]-mu)/sd;
+ const idx=Array.from({length:n},(_,i)=>i),mbs=CFG.rl.minibatch;
+ for(let ep=0;ep<CFG.rl.epochs;ep++){
+  for(let i=n-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]]}
+  for(let st=0;st<n;st+=mbs){const mb=idx.slice(st,st+mbs),m=mb.length,G={};
+   for(const k in M)G[k]=new Float32Array(M[k].length);
+   for(const s of mb){const t=B[s],{z,v}=fwd(t.x),p=soft(z,t.T),lp=Math.log(p[t.a]+1e-9),ratio=Math.exp(lp-t.logp),A=adv[s];
+    const clipped=(A>0&&ratio>1+P.clip)||(A<0&&ratio<1-P.clip),dlp=clipped?0:-A*ratio,Hh=-(p[0]*Math.log(p[0]+1e-9)+p[1]*Math.log(p[1]+1e-9));
+    const dz=[0,0];for(let j=0;j<2;j++){dz[j]=(dlp*((j==t.a?1:0)-p[j])+P.ent*p[j]*(Math.log(p[j]+1e-9)+Hh))/t.T/m}
+    const dv=P.vc*(v-ret[s])/m;
+    for(let j=0;j<H;j++){G.Wp[j]+=dz[0]*hid[j];G.Wp[H+j]+=dz[1]*hid[j];G.Wv[j]+=dv*hid[j];
+     if(hid[j]>0){const dh=dz[0]*M.Wp[j]+dz[1]*M.Wp[H+j]+dv*M.Wv[j];G.b1[j]+=dh;for(let i=0;i<NI;i++)G.W1[j*NI+i]+=dh*t.x[i]}}
+    G.bp[0]+=dz[0];G.bp[1]+=dz[1];G.bv[0]+=dv}
+   let nrm=0;for(const k in G)for(let i=0;i<G[k].length;i++)nrm+=G[k][i]**2;nrm=Math.sqrt(nrm);const sc=nrm>P.gclip?P.gclip/nrm:1;
+   AD.t++;optStep++;const b1=0.9,b2=0.999,c1=1-b1**AD.t,c2=1-b2**AD.t;
+   for(const k in M){const w=M[k],g2=G[k],mm=AD.m[k],vv=AD.v[k];for(let i=0;i<w.length;i++){const gg=g2[i]*sc;mm[i]=b1*mm[i]+(1-b1)*gg;vv[i]=b2*vv[i]+(1-b2)*gg*gg;w[i]-=P.lr*(mm[i]/c1)/(Math.sqrt(vv[i]/c2)+1e-8)}}}}
+ ppoUpdates++;buf=[];epsInBuf=0}
+let ON={m:new Float32Array(NI),v:new Float32Array(NI),n:0};
+// ---------- connectome (fixed, typed arrays, CSR by post-synaptic neuron)
+let N=0,PX,PY,PF,act,nxt,vis,stim,off,src,wn,sensIdx,danIdx,ridx,gOf,inW,outW,P3,readoutBuf=new Float32Array(NI);
+async function loadGraph(preset){
+ setStatus('LOADING','');const g=await api('/api/connectome?preset='+preset);GR=g;const nu=g.neurons,e=g.edges;N=nu.id.length;
+ P3=new Float32Array(N*3);
+ PX=new Float32Array(N);PY=new Float32Array(N);PF=new Float32Array(N);act=new Float32Array(N);nxt=new Float32Array(N);vis=new Float32Array(N);stim=new Float32Array(N);
+ gOf=Int8Array.from(nu.grp);const gn=g.meta.groups,E=e.pre.length;off=new Int32Array(N+1);for(let k=0;k<E;k++)off[e.post[k]+1]++;for(let i=0;i<N;i++)off[i+1]+=off[i];
+ const cur=off.slice(0,N);src=new Int32Array(E);wn=new Float32Array(E);inW=new Float32Array(N);outW=new Float32Array(N);
+ for(let k=0;k<E;k++){const p=e.post[k],j=cur[p]++;src[j]=e.pre[k];wn[j]=e.wn[k];inW[p]+=e.w[k];outW[e.pre[k]]+=e.w[k]}
+ const gi=n=>gn.indexOf(n);sensIdx=[];danIdx=[];for(let i=0;i<N;i++){if(gOf[i]==gi('sensory'))sensIdx.push(i);if(gOf[i]==gi('dan'))danIdx.push(i)}
+ const id2i=new Map(nu.id.map((b,i)=>[b,i]));ridx=Int32Array.from(g.meta.readout.map(b=>id2i.get(b)));
+ const c=g.meta.counts,m=g.meta;$('binfo').textContent=`REAL NEUPRINT ${m.dataset} · neurons ${N.toLocaleString()} · edges ${E.toLocaleString()} · KC ${c.kc||0} MBON ${c.mbon||0} DAN ${c.dan||0} DN ${c.descending||0} MN ${c.motor||0} · readout ${ridx.length}`;
+ $('cstat').textContent=`hash ${m.hash} · readout ${ridx.length}${ridx.length<NI?' (<64: real neurons available)':''}`;
+ buildEdges();await loadCtx();normalize();if(CTX)$('binfo').textContent+=` · outline ${CTX.n.toLocaleString()} real neurons (anatomy only)`;if(ridx.length<NI)setStatus('ERROR',`Only ${ridx.length} readout neurons; the 64-input model needs 64.`);}
+function propagate(){const leak=CFG.connectome.leak,gain=CFG.connectome.gain,cl=CFG.connectome.act_clip;
+ for(let s=0;s<P.prop;s++){for(let i=0;i<N;i++){let a=0;for(let e=off[i];e<off[i+1];e++)a+=wn[e]*act[src[e]];const v=(1-leak)*act[i]+leak*Math.tanh(a*gain+stim[i]);nxt[i]=clamp(v,-cl,cl)}const t=act;act=nxt;nxt=t}}
+// ---------- Dino environment (same physics as the original)
+const GM=()=>CFG.game,G=170;let dino,obs,speed,score,pend,curR,epR,res=[],chart=[],best={train:0,test:0},nJ=0,nD=0,rewHist=[],daTr=0,daSign=1,lastAct=-1,actFlash=0;
+function resetEp(){dino={x:60,w:26,y:0,vy:0,duck:0};obs=[];speed=GM().start_speed;score=0;pend=null;curR=0;epR=0;episode++;if(act){act.fill(0);nxt.fill(0);stim.fill(0);if(BASE)BASE.fill(0)}
+ if(mode=='train')explore=Math.max(P.expMin,explore*CFG.rl.explore_decay)}
+const nextObs=()=>obs.find(o=>o.x+o.w>dino.x),feat=new Float32Array(34);
+function encode(o){feat.fill(0);const g=GM();
+ if(o){const d=clamp((o.x-dino.x-dino.w)/320,0,1);for(let b=0;b<24;b++)feat[b]=Math.exp(-((d-b/23)**2)/0.004);feat[24+o.type]=1}else feat[26]=1;
+ feat[27+Math.min(3,Math.floor((speed-g.start_speed)/(g.max_speed-g.start_speed)*4))]=1;feat[31+(dino.duck>0?2:dino.y>0?1:0)]=1;
+ const k=sensIdx.length;for(let j=0;j<k;j++)stim[sensIdx[j]]=feat[j%34]*CFG.connectome.stim_scale}
+function finalize(nextV,done){if(!pend)return;pend.r=curR;pend.done=done;const d=curR+(done?0:P.gamma*nextV)-pend.v;daTr=Math.abs(d);daSign=d>=0?1:-1;$('sDA').textContent=d.toFixed(2);
+ if(mode=='train')buf.push(pend);pend=null;curR=0}
+function decide(){const x=new Float32Array(NI);if(mode=='train'){ON.n++;const rt=1/Math.min(ON.n,5000);for(let j=0;j<NI;j++){const d=act[ridx[j]]-ON.m[j];ON.m[j]+=rt*d;ON.v[j]=(1-rt)*(ON.v[j]+rt*d*d)}}
+ for(let j=0;j<NI;j++)x[j]=clamp((act[ridx[j]]-ON.m[j])/(Math.sqrt(ON.v[j])+0.01),-5,5);const{z,v}=fwd(x);finalize(v,false);
+ const T=mode=='train'?1+explore*CFG.rl.temp_gain:1,p=soft(z,T);let a;
+ if(mode=='train')a=rnd()<p[0]?0:1;else a=p[0]>=p[1]?0:1;
+ pend={x,a,logp:Math.log(p[a]+1e-9),T,v};lastAct=a;actFlash=1;if(a==0)nJ++;else nD++;
+ if(a==0){dino.vy=GM().jump_v;dino.y=0.01}else dino.duck=GM().duck_steps}
+function step(){const g=GM();speed=Math.min(g.max_speed,speed+g.accel);score+=speed*0.05;curR+=REW.survive;epR+=REW.survive;envSteps++;
+ const last=obs[obs.length-1];if(!last||last.x<600-(g.spawn_gap_min+rnd()*g.spawn_gap_rand)){const bird=rnd()<g.bird_chance;
+  obs.push(bird?{x:610,w:g.bird_w,h:g.bird_h,by:g.bird_by,type:1}:{x:610,w:14+rnd()*12,h:26+rnd()*10,by:0,type:0})}
+ obs.forEach(o=>o.x-=speed);const o=nextObs();encode(o);propagate();
+ if(o&&!o.dec&&dino.y==0&&dino.duck<=0&&(o.x-dino.x-dino.w)<=g.decision_dist){o.dec=1;decide()}
+ if(dino.y>0){dino.y+=dino.vy;dino.vy-=g.gravity;if(dino.y<=0){dino.y=0;dino.vy=0}}if(dino.duck>0)dino.duck--;
+ const h=dino.duck>0?22:40;
+ for(const q of obs){
+  if(!q.done&&dino.x+dino.w-3>q.x&&dino.x+3<q.x+q.w&&(dino.y+h-3)>q.by&&(dino.y+3)<q.by+q.h){q.done=true;curR+=REW.collide;epR+=REW.collide;res.push(0);finalize(0,true);endEp();return}
+  if(!q.done&&q.x+q.w<dino.x){q.done=true;curR+=REW.clear;epR+=REW.clear;res.push(1)}}
+ obs=obs.filter(q=>q.x>-60);const r=res.slice(-50);if(res.length&&(q=>0)){}}
+function endEp(){best[mode]=Math.max(best[mode],score);rewHist.push(epR);if(rewHist.length>50)rewHist.shift();
+ const r=res.slice(-50);chart.push(r.reduce((a,b)=>a+b,0)/Math.max(1,r.length));if(chart.length>800)chart.shift();
+ if(mode=='train'){epsInBuf++;resetEp();if(epsInBuf>=P.epu&&buf.length>=CFG.rl.min_batch)ppoUpdate()}else resetEp()}
+// ---------- brain drawing
+const bc=$('brain'),bx=bc.getContext('2d');let yaw=0,pitch=-.25,drag=false,lx=0,ly=0,mx=-1,my=-1;
+let BASE=null,DEV=null,VS=0.02;
+function updateViz(){const dec=CFG.visual.activity_decay,ct=CFG.visual.contrast;if(!BASE||BASE.length!=N){BASE=new Float32Array(N);DEV=new Float32Array(N)}
+ // brightness = activity above each neuron's own slow baseline, normalised to the strongest current deviation (display only)
+ let mx=0;for(let i=0;i<N;i++){const dv=Math.abs(act[i]-BASE[i]);BASE[i]+=0.03*(act[i]-BASE[i]);DEV[i]=dv;if(dv>mx)mx=dv}
+ VS=0.98*VS+0.02*Math.max(mx,1e-4);
+ for(let i=0;i<N;i++)vis[i]=Math.max(vis[i]*dec,Math.pow(Math.min(1,DEV[i]/VS),ct));
+ daTr*=0.95;for(const i of danIdx)vis[i]=Math.max(vis[i],daTr);actFlash*=0.95}
+let CTX=null,FLIP=1,EPRE=null,EPOST=null,GLOW={};
+const famColor=n=>{n=n.toLowerCase();return n.includes('optic')||n.startsWith('ol')?[108,124,255]:n.includes('projection')?[196,123,255]:n.includes('centrifugal')?[90,208,192]:n.includes('central')||n.startsWith('cb')?[255,122,184]:n.includes('descend')?[93,255,154]:n.includes('sensory')?[63,240,255]:n.includes('motor')?[255,138,61]:n.includes('endocrine')?[255,225,74]:[159,176,216]};
+function prepCtx(c){const n=c.id.length,key=new Int32Array(n);for(let i=0;i<n;i++)key[i]=c.c[i]*3+(c.id[i]%3);
+ const ord=Array.from({length:n},(_,i)=>i).sort((a,b)=>key[a]-key[b]),o={n,classes:c.classes,id:ord.map(i=>c.id[i]),cls:ord.map(i=>c.c[i]),x:ord.map(i=>c.x[i]),y:ord.map(i=>c.y[i]),z:ord.map(i=>c.z[i])};
+ const K=c.classes.length*3;o.off=new Int32Array(K+1);for(let i=0;i<n;i++)o.off[key[ord[i]]+1]++;for(let k=0;k<K;k++)o.off[k+1]+=o.off[k];
+ o.cols=[];for(const nm of c.classes){const f=famColor(nm);for(const sh of[.55,.8,1])o.cols.push(`rgb(${f[0]*sh|0},${f[1]*sh|0},${f[2]*sh|0})`)}
+ o.sx=new Float32Array(n);o.sy=new Float32Array(n);o.sf=new Float32Array(n);return o}
+async function loadCtx(){CTX=null;$('bCtx').style.display='none';try{CTX=prepCtx(await api('/api/context'))}catch(e){$('bCtx').style.display='';$('msg').textContent='Brain outline not downloaded yet: press Fetch outline.'}}
+function normalize(){if(!GR)return;const S=[GR.neurons.x,GR.neurons.y,GR.neurons.z],C=CTX?[CTX.x,CTX.y,CTX.z]:null,ref=C||S,rng=[],mid=[];
+ for(let a=0;a<3;a++){const arr=Float32Array.from(ref[a]);arr.sort();const lo=arr[Math.floor(arr.length*.01)],hi=arr[Math.floor(arr.length*.99)];rng[a]=hi-lo;mid[a]=(hi+lo)/2}
+ const o=[0,1,2].sort((p,q)=>rng[q]-rng[p]),sc=Math.max(rng[o[0]],1e-9)/2*1.05;   // widest axis -> left/right; uniform scale only
+ const tr=(A,n,out)=>{for(let i=0;i<n;i++){out[i*3]=(A[o[0]][i]-mid[o[0]])/sc;out[i*3+1]=-FLIP*(A[o[1]][i]-mid[o[1]])/sc;out[i*3+2]=(A[o[2]][i]-mid[o[2]])/sc}};
+ P3=new Float32Array(N*3);tr(S,N,P3);if(C){CTX.p=new Float32Array(CTX.n*3);tr(C,CTX.n,CTX.p)}}
+function buildEdges(){const e=GR.edges,K=Math.min(CFG.visual.edges_shown||0,e.w.length),ix=Array.from(e.w.keys()).sort((a,b)=>e.w[b]-e.w[a]).slice(0,K);EPRE=Int32Array.from(ix.map(k=>e.pre[k]));EPOST=Int32Array.from(ix.map(k=>e.post[k]))}
+function sprite(col){if(GLOW[col])return GLOW[col];const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),r=parseInt(col.slice(1,3),16),g=parseInt(col.slice(3,5),16),b=parseInt(col.slice(5,7),16),gr=x.createRadialGradient(32,32,0,32,32,32);
+ gr.addColorStop(0,'rgba(255,255,255,.95)');gr.addColorStop(.2,`rgba(${r},${g},${b},.8)`);gr.addColorStop(.6,`rgba(${r},${g},${b},.18)`);gr.addColorStop(1,`rgba(${r},${g},${b},0)`);x.fillStyle=gr;x.fillRect(0,0,64,64);return GLOW[col]=c}
+function proj(Q,n,X,Y,F,w,h,sc,cy,sy,cp,sp){for(let i=0;i<n;i++){const x=Q[i*3],y=Q[i*3+1],z=Q[i*3+2],x1=x*cy+z*sy,z1=-x*sy+z*cy,y1=y*cp-z1*sp,z2=y*sp+z1*cp,f=2.2/(2.2+z2);X[i]=w/2+x1*sc*f;Y[i]=h/2-y1*sc*f;F[i]=f}}
+function drawBrain(){const w=bc.width,h=bc.height,d=DPR(),sc=Math.min(w*0.43,h*0.8),cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch),ps=CFG.visual.particle_size;
+ if(!drag)yaw+=CFG.visual.auto_rotate;bx.globalCompositeOperation='source-over';bx.globalAlpha=1;bx.fillStyle='#05070f';bx.fillRect(0,0,w,h);if(!GR)return;
+ const gn=GR.meta.groups;
+ if(CTX&&CTX.p){proj(CTX.p,CTX.n,CTX.sx,CTX.sy,CTX.sf,w,h,sc,cy,sy,cp,sp);bx.globalAlpha=CFG.visual.ctx_alpha;
+  for(let k=0;k<CTX.cols.length;k++){bx.fillStyle=CTX.cols[k];for(let i=CTX.off[k];i<CTX.off[k+1];i++){const s=Math.max(1,CTX.sf[i]*1.6*d*ps);bx.fillRect(CTX.sx[i],CTX.sy[i],s,s)}}}
+ proj(P3,N,PX,PY,PF,w,h,sc,cy,sy,cp,sp);bx.globalAlpha=.9;
+ for(let i=0;i<N;i++)if(vis[i]<.06){bx.fillStyle=DIM[gn[gOf[i]]]||'#3a4b6e';const s=Math.max(1.5,PF[i]*2.4*d*ps);bx.fillRect(PX[i],PY[i],s,s)}
+ bx.globalCompositeOperation='lighter';bx.lineWidth=Math.max(1,d*.8);
+ if(EPRE)for(let k=0;k<EPRE.length;k++){const a=EPRE[k],v=vis[a];if(v>.25){bx.globalAlpha=Math.min(.6,v*.5);bx.strokeStyle=COL[gn[gOf[a]]]||'#9fd0ff';bx.beginPath();bx.moveTo(PX[a],PY[a]);bx.lineTo(PX[EPOST[k]],PY[EPOST[k]]);bx.stroke()}}
+ for(let i=0;i<N;i++){const l=vis[i];if(l>=.06){const g=gn[gOf[i]],col=g=='dan'&&daSign<0?'#ff4d6d':COL[g]||'#9fd0ff',r=PF[i]*(3+l*9)*d*ps;bx.globalAlpha=Math.min(.9,.15+l*.6);bx.drawImage(sprite(col),PX[i]-r,PY[i]-r,2*r,2*r)}}
+ const t=$('tip');if(mx<0||drag){t.style.display='none';return}
+ let bi=-1,bd=(10*d)**2,ci=-1;for(let i=0;i<N;i++){const dx=PX[i]-mx*d,dy=PY[i]-my*d,q=dx*dx+dy*dy;if(q<bd){bd=q;bi=i}}
+ if(bi<0&&CTX&&CTX.p){let cd=(6*d)**2;for(let i=0;i<CTX.n;i++){const dx=CTX.sx[i]-mx*d,dy=CTX.sy[i]-my*d,q=dx*dx+dy*dy;if(q<cd){cd=q;ci=i}}}
+ if(bi<0&&ci<0){t.style.display='none';return}
+ if(bi>=0){const nu=GR.neurons,gname=gn[gOf[bi]];t.textContent=`bodyId ${nu.id[bi]}\nType ${nu.type[bi]||'-'}  ${nu.inst[bi]||''}\nGroup ${gname}\nActivity ${act[bi].toFixed(2)}\nIn ${Math.round(inW[bi])}  Out ${Math.round(outW[bi])}\nx ${Math.round(nu.x[bi])} y ${Math.round(nu.y[bi])} z ${Math.round(nu.z[bi])}`}
+ else t.textContent=`bodyId ${CTX.id[ci]}\nClass ${CTX.classes[CTX.cls[ci]]}\nreal neuron, anatomy only\n(not in the simulation)\nx ${CTX.x[ci]} y ${CTX.y[ci]} z ${CTX.z[ci]}`;
+ t.style.display='block';const r=bc.getBoundingClientRect();t.style.left=(r.left+mx+14)+'px';t.style.top=(r.top+my+14)+'px'}
+const fit=c=>{const d=DPR();c.width=c.clientWidth*d;c.height=c.clientHeight*d};
+bc.onpointerdown=e=>{drag=true;lx=e.clientX;ly=e.clientY;bc.setPointerCapture(e.pointerId)};bc.onpointerup=()=>drag=false;
+bc.onpointerleave=()=>{mx=-1};
+bc.onpointermove=e=>{const r=bc.getBoundingClientRect();mx=e.clientX-r.left;my=e.clientY-r.top;if(!drag)return;yaw+=(e.clientX-lx)*.008;pitch=clamp(pitch+(e.clientY-ly)*.006,-1.3,1.3);lx=e.clientX;ly=e.clientY};
+// ---------- game + chart drawing
+const gcv=$('game'),gc=gcv.getContext('2d'),cc=$('chart').getContext('2d');
+function drawGame(){const s=gcv.width/600;gc.setTransform(s,0,0,s,0,0);gc.fillStyle='#0a0e1c';gc.fillRect(0,0,600,200);gc.fillStyle='#2a3566';gc.fillRect(0,G,600,2);
+ const h=dino.duck>0?22:40,top=G-dino.y-h;gc.fillStyle=dino.duck>0?'#ff8a3d':dino.y>0?'#5dff9a':'#dfe6ff';gc.fillRect(dino.x,top,dino.w,h);gc.fillStyle='#05070f';gc.fillRect(dino.x+17,top+5,4,4);
+ for(const q of obs){gc.fillStyle=q.type?'#e08cff':'#7e8bb3';gc.fillRect(q.x,G-q.by-q.h,q.w,q.h)}}
+function drawChart(){const c=$('chart'),w=c.width,h=c.height;cc.setTransform(1,0,0,1,0,0);cc.fillStyle='#10152a';cc.fillRect(0,0,w,h);cc.strokeStyle='#5dff9a';cc.lineWidth=2;cc.beginPath();
+ chart.forEach((v,i)=>{const x=i/Math.max(1,chart.length-1)*w,y=h-4-v*(h-8);i?cc.lineTo(x,y):cc.moveTo(x,y)});cc.stroke();cc.fillStyle='#7e8bb3';cc.font=`${11*DPR()}px sans-serif`;cc.fillText('cleared rate per obstacle (rolling 50, raw)',6,12*DPR())}
+let fr=0;
+function hud(){$('sEp').textContent=episode;$('sScore').textContent=Math.floor(score);$('sBest').textContent=Math.floor(best[mode=='test'?'test':'train']);
+ const r=res.slice(-50);$('sRate').textContent=r.length?Math.round(r.reduce((a,b)=>a+b,0)/r.length*100)+'%':'0%';$('sExp').textContent=(mode=='train'?explore:0).toFixed(2);
+ $('sRew').textContent=rewHist.length?(rewHist.reduce((a,b)=>a+b,0)/rewHist.length).toFixed(2):'0.00';$('sJD').textContent=nJ+'/'+nD;
+ const f=$('daFill'),v=daTr*daSign*50/1.5;f.style.background=daSign>0?'var(--da)':'#ff4d6d';f.style.width=Math.min(50,Math.abs(v))+'%';f.style.left=v>=0?'50%':(50+Math.max(-50,v))+'%'}
+function loop(){try{loopBody()}catch(e){setStatus('ERROR','Runtime: '+e.message);console.error(e)}requestAnimationFrame(loop)}
+function loopBody(){if(GR&&mode!='idle'){const n=mode=='train'?P.spf:CFG.rl.test_steps_per_frame;for(let i=0;i<n;i++)step();updateViz()}else if(GR)updateViz();drawBrain();drawGame();if(++fr%6==0){hud();drawChart()}}
+// ---------- controls / checkpoints
+const IDS={pLr:'lr',pEpu:'epu',pSpf:'spf',pGamma:'gamma',pClip:'clip',pEnt:'ent',pExp:'expMin',pProp:'prop'};
+function syncUI(){for(const k in IDS)$(k).value=P[IDS[k]]}
+for(const k in IDS)document.addEventListener('DOMContentLoaded',()=>{});
+function applyTP(n){const t=CFG.training_presets[n];P.spf=t.train_steps_per_frame;P.epu=t.episodes_per_update;P.lr=t.lr;P.ent=t.entropy;syncUI()}
+function setMode(m){mode=m;$('bTrain').classList.toggle('on',m=='train');$('bTest').classList.toggle('on',m=='test');setStatus(m=='train'?'TRAINING':'TESTING','');nJ=nD=0;resetEp()}
+function newRun(){ON={m:new Float32Array(NI),v:new Float32Array(NI),n:0};initModel();buf=[];epsInBuf=0;explore=CFG.rl.explore_start;episode=0;ppoUpdates=0;envSteps=0;optStep=0;res=[];chart=[];best={train:0,test:0};rewHist=[];resetEp()}
+function ckpt(){return{model_version:CFG.rl.model_version,experiment_id:exp_id,dataset:GR.meta.dataset,connectome_hash:GR.meta.hash,connectome_preset:GR.meta.preset,
+ selected_ids:GR.neurons.id,readout:GR.meta.readout,action_mapping:GR.meta.action_mapping,arch:[NI,H,2],obs_norm:{m:Array.from(ON.m),v:Array.from(ON.v),n:ON.n},
+ weights:Object.fromEntries(Object.keys(M).map(k=>[k,Array.from(M[k])])),adam:{t:AD.t,m:Object.fromEntries(Object.keys(M).map(k=>[k,Array.from(AD.m[k])])),v:Object.fromEntries(Object.keys(M).map(k=>[k,Array.from(AD.v[k])]))},
+ episode,env_steps:envSteps,ppo_updates:ppoUpdates,optimizer_step:optStep,explore,params:{...P},train_preset:$('pPre').value,reward_preset:$('pRew').value,seed:CFG.visual.seed,
+ best:best.train,avg_reward:rewHist.length?rewHist.reduce((a,b)=>a+b,0)/rewHist.length:0,metrics:{chart:chart.slice(-800),res:res.slice(-200)}}}
+function restore(c){const bad=c.dataset!=GR.meta.dataset?'dataset':c.connectome_hash!=GR.meta.hash?'connectome hash':JSON.stringify(c.readout)!=JSON.stringify(GR.meta.readout)?'readout IDs':
+  JSON.stringify(c.arch)!=JSON.stringify([NI,CFG.rl.hidden,2])?'architecture':c.model_version!=CFG.rl.model_version?'model version':null;
+ if(bad)throw new Error('Checkpoint rejected: '+bad+' mismatch');
+ for(const k in M){M[k].set(c.weights[k]);AD.m[k].set(c.adam.m[k]);AD.v[k].set(c.adam.v[k])}AD.t=c.adam.t;if(!c.obs_norm)throw new Error('Checkpoint rejected: no observation normalisation');ON={m:Float32Array.from(c.obs_norm.m),v:Float32Array.from(c.obs_norm.v),n:c.obs_norm.n};
+ episode=c.episode;envSteps=c.env_steps;ppoUpdates=c.ppo_updates;optStep=c.optimizer_step;explore=c.explore;Object.assign(P,c.params);
+ $('pPre').value=c.train_preset;$('pRew').value=c.reward_preset;REW=CFG.reward_presets[c.reward_preset];
+ chart=c.metrics.chart;res=c.metrics.res;best.train=c.best;buf=[];epsInBuf=0;syncUI();resetEp();episode=c.episode}
+async function init(){
+ try{CFG=await api('/api/config')}catch(e){setStatus('ERROR','Backend not reachable. Run start.bat.');return}
+ const r=CFG.rl;P={lr:r.lr,epu:r.episodes_per_update,spf:r.train_steps_per_frame,gamma:r.gamma,lam:r.lam,clip:r.clip,ent:r.entropy,vc:r.value_coef,gclip:r.grad_clip,expMin:r.explore_min,prop:CFG.connectome.propagation_steps};
+ seed=CFG.visual.seed;for(const n in CFG.training_presets)$('pPre').add(new Option(n,n));for(const n in CFG.reward_presets)$('pRew').add(new Option(n,n));
+ for(const n in CFG.connectome.presets)$('pCon').add(new Option(n.toUpperCase()+' ~'+CFG.connectome.presets[n],n));
+ $('pPre').value='BALANCED';$('pRew').value='STANDARD';REW=CFG.reward_presets.STANDARD;$('pCon').value=CFG.connectome.default;syncUI();
+ for(const k in IDS)$(k).onchange=e=>{const v=parseFloat(e.target.value);if(!(v>0||k=='pEnt'))return;const lim={pGamma:[0.5,0.999],pClip:[0.02,0.5],pProp:[1,8]}[k];P[IDS[k]]=lim?clamp(v,lim[0],lim[1]):v;e.target.value=P[IDS[k]]};   // read at the next PPO update / step
+ $('pPre').onchange=e=>applyTP(e.target.value);$('pRew').onchange=e=>{REW=CFG.reward_presets[e.target.value]};
+ fit(bc);fit(gcv);fit($('chart'));addEventListener('resize',()=>{fit(bc);fit(gcv);fit($('chart'))});initModel();resetEp();
+ await useGraph($('pCon').value,true);loop()}
+async function useGraph(p,first){const st=await api('/api/connectome/status');
+ if(!st.cached[p]){mode='idle';GR=null;N=0;$('binfo').textContent='';setStatus(st.status=='ERROR'?'ERROR':'MISSING','Connectome change requires rebuild. '+(st.error||''));return}
+ await loadGraph(p);if(!first){newRun();mode='idle';$('msg').textContent='Connectome changed. Existing checkpoints belong to a different graph; start a new experiment.'}
+ else{newRun();mode='idle'}$('bTrain').classList.remove('on');$('bTest').classList.remove('on');if(GR&&ridx.length>=NI)setStatus(st.status,first?'Press Train.':$('msg').textContent)}
+$('pCon').onchange=async e=>{mode='idle';try{await useGraph(e.target.value,false)}catch(x){setStatus('ERROR',x.message)}};
+$('bTrain').onclick=()=>{if(GR&&ridx.length>=NI)setMode('train')};$('bTest').onclick=()=>{if(GR&&ridx.length>=NI)setMode('test')};
+$('bReset').onclick=()=>{if(GR){newRun();mode='idle';$('bTrain').classList.remove('on');$('bTest').classList.remove('on');setStatus('IDLE','Model re-initialised.')}};
+$('bSave').onclick=async()=>{if(!GR)return;try{const r=await api('/api/models/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ckpt())});$('msg').textContent='Saved model_'+String(r.model_id).padStart(6,'0')}catch(e){setStatus('ERROR',e.message)}};
+$('bLoad').onclick=async()=>{if(!GR)return;const was=mode;mode='idle';setStatus('LOADING MODEL','');try{restore(await api('/api/models/load',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));setStatus('IDLE','Model loaded (episode '+episode+'). Press Train or Test.');$('bTrain').classList.remove('on');$('bTest').classList.remove('on')}catch(e){setStatus('ERROR',e.message)}};
+$('bFlip').onclick=()=>{FLIP*=-1;normalize()};
+$('bCtx').onclick=async()=>{setStatus('BUILDING OUTLINE','');try{await api('/api/context/build',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});await loadCtx();normalize();if(CTX)$('binfo').textContent+=` · outline ${CTX.n.toLocaleString()} real neurons (anatomy only)`;setStatus('IDLE','Outline loaded.')}catch(e){setStatus('ERROR',e.message)}};
+$('bBuild').onclick=async()=>{mode='idle';GR=null;setStatus('BUILDING CONNECTOME','');try{await api('/api/connectome/build',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preset:$('pCon').value})});await useGraph($('pCon').value,false);$('msg').textContent='Rebuilt. Start training again; older checkpoints may not match.'}catch(e){setStatus('ERROR',e.message)}};
+init();
+</script></body></html>
